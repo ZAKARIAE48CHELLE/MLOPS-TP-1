@@ -8,6 +8,7 @@ import sys
 import warnings
 from urllib.parse import urlparse
 
+import matplotlib.pyplot as plt
 import mlflow
 import mlflow.sklearn
 import numpy as np
@@ -15,7 +16,14 @@ import pandas as pd
 from mlflow.models.signature import infer_signature
 from sklearn.datasets import load_wine
 from sklearn.linear_model import ElasticNet
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    ConfusionMatrixDisplay,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
+)
 from sklearn.model_selection import train_test_split
 
 
@@ -76,10 +84,21 @@ def train(alpha=0.01, l1_ratio=0.1, data_path=None, experiment_name="WineQuality
         predicted_qualities = lr.predict(test_x)
         rmse, mae, r2 = eval_metrics(test_y, predicted_qualities)
 
+        # Compute discrete predictions for confusion matrix
+        min_val = int(train_y.values.min())
+        max_val = int(train_y.values.max())
+        pred_classes = np.clip(np.round(predicted_qualities), min_val, max_val).astype(int)
+
+        cm = confusion_matrix(test_y, pred_classes)
+        accuracy = accuracy_score(test_y, pred_classes)
+
         print(f"ElasticNet model (alpha={alpha:f}, l1_ratio={l1_ratio:f}):")
-        print(f"  RMSE: {rmse:.4f}")
-        print(f"  MAE:  {mae:.4f}")
-        print(f"  R2:   {r2:.4f}")
+        print(f"  RMSE:     {rmse:.4f}")
+        print(f"  MAE:      {mae:.4f}")
+        print(f"  R2:       {r2:.4f}")
+        print(f"  Accuracy: {accuracy:.4f}")
+        print("Confusion Matrix:")
+        print(cm)
 
         # Log parameters
         mlflow.log_param("alpha", alpha)
@@ -89,6 +108,18 @@ def train(alpha=0.01, l1_ratio=0.1, data_path=None, experiment_name="WineQuality
         mlflow.log_metric("rmse", rmse)
         mlflow.log_metric("mae", mae)
         mlflow.log_metric("r2", r2)
+        mlflow.log_metric("accuracy", accuracy)
+
+        # Generate and log Confusion Matrix plot as an MLflow artifact
+        fig, ax = plt.subplots(figsize=(6, 5))
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+        disp.plot(cmap="Blues", ax=ax)
+        ax.set_title(f"Confusion Matrix (Accuracy: {accuracy:.2%})")
+        plt.tight_layout()
+
+        # Log figure into MLflow run artifacts
+        mlflow.log_figure(fig, "confusion_matrix.png")
+        plt.close(fig)
 
         # Log model with signature and input example
         signature = infer_signature(train_x, lr.predict(train_x))
