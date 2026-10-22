@@ -41,9 +41,13 @@ def load_data(data_path=None):
     return df
 
 
-def train(alpha=0.5, l1_ratio=0.5, data_path=None, experiment_name="WineQuality-ElasticNet"):
+def train(alpha=0.01, l1_ratio=0.1, data_path=None, experiment_name="WineQuality-ElasticNet", run_name=None):
     warnings.filterwarnings("ignore")
     np.random.seed(42)
+
+    # Set default run name if none provided
+    if not run_name:
+        run_name = f"ElasticNet_alpha_{alpha}_l1_{l1_ratio}"
 
     # Set MLflow experiment
     mlflow.set_experiment(experiment_name)
@@ -60,8 +64,10 @@ def train(alpha=0.5, l1_ratio=0.5, data_path=None, experiment_name="WineQuality-
     train_y = train_df[[target_col]]
     test_y = test_df[[target_col]]
 
-    # 3. Start MLflow run
-    with mlflow.start_run():
+    # 3. Start MLflow run with custom run name
+    with mlflow.start_run(run_name=run_name):
+        print(f"Starting MLflow Run: '{run_name}' in experiment: '{experiment_name}'")
+
         # Train ElasticNet model
         lr = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, random_state=42)
         lr.fit(train_x, train_y)
@@ -96,21 +102,33 @@ def train(alpha=0.5, l1_ratio=0.5, data_path=None, experiment_name="WineQuality-
             input_example=input_example,
         )
 
-        print("Run logged successfully to MLflow!")
+        print(f"Run '{run_name}' logged successfully to MLflow!")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train an ElasticNet model with MLflow tracking")
-    parser.add_argument("--alpha", type=float, default=0.5, help="Alpha hyperparameter (default: 0.5)")
-    parser.add_argument("--l1-ratio", type=float, default=0.5, help="L1 ratio hyperparameter (default: 0.5)")
+    parser.add_argument("--alpha", type=float, default=0.01, help="Alpha hyperparameter (default: 0.01)")
+    parser.add_argument("--l1-ratio", type=float, default=0.1, help="L1 ratio hyperparameter (default: 0.1)")
     parser.add_argument("--data-path", type=str, default=None, help="Optional path to local dataset CSV")
     parser.add_argument("--experiment", type=str, default="WineQuality-ElasticNet", help="MLflow experiment name")
+    parser.add_argument("--run-name", type=str, default=None, help="MLflow run name")
 
     args = parser.parse_args()
+
+    # Prompt user for run name if not provided via command line
+    run_name = args.run_name
+    if not run_name:
+        try:
+            user_input = input("Enter a name for this MLflow run (press Enter for default): ").strip()
+            if user_input:
+                run_name = user_input
+        except (EOFError, KeyboardInterrupt):
+            pass
 
     train(
         alpha=args.alpha,
         l1_ratio=args.l1_ratio,
         data_path=args.data_path,
         experiment_name=args.experiment,
+        run_name=run_name,
     )
