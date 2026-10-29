@@ -6,7 +6,10 @@ os.environ["MLFLOW_DISABLE_AGENT_HINT"] = "1"
 
 import matplotlib.pyplot as plt
 import mlflow
+import mlflow.data
 import mlflow.sklearn
+import pandas as pd
+import yaml
 from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
@@ -18,16 +21,41 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 
 
+def get_dvc_data_info(dvc_file_path="Data/iris.csv.dvc"):
+    """Récupère l'empreinte numérique (hash MD5) de DVC si disponible."""
+    if os.path.exists(dvc_file_path):
+        try:
+            with open(dvc_file_path, "r") as f:
+                dvc_meta = yaml.safe_load(f)
+                return dvc_meta.get("outs", [{}])[0].get("md5")
+        except Exception:
+            pass
+    return None
+
+
 def run_experiment(n_estimators_list=[50, 100, 150], max_depth=None):
     """
     Entraîne plusieurs modèles RandomForest sur le jeu de données Iris,
-    enregistre les hyperparamètres, la durée d'entraînement, les métriques
-    et la matrice de confusion dans MLflow Tracking.
+    enregistre les hyperparamètres, la durée d'entraînement, les métriques,
+    la matrice de confusion ET la version des données DVC dans MLflow Tracking.
     """
-    # 1. Charger les données Iris
-    iris = load_iris()
-    X, y = iris.data, iris.target
-    target_names = list(iris.target_names)
+    # 1. Charger les données Iris (depuis le CSV versionné par DVC ou scikit-learn)
+    data_csv = "Data/iris.csv"
+    if os.path.exists(data_csv):
+        df = pd.read_csv(data_csv)
+        feature_cols = [c for c in df.columns if c not in ["target", "species"]]
+        X = df[feature_cols].values
+        y = df["target"].values
+        target_names = ["setosa", "versicolor", "virginica"]
+    else:
+        iris = load_iris()
+        X, y = iris.data, iris.target
+        target_names = list(iris.target_names)
+        df = pd.DataFrame(X, columns=iris.feature_names)
+        df["target"] = y
+
+    # Récupération du hash de version DVC
+    dvc_hash = get_dvc_data_info("Data/iris.csv.dvc")
 
     # 2. Diviser le jeu de données (80% train, 20% test)
     X_train, X_test, y_train, y_test = train_test_split(
@@ -38,11 +66,28 @@ def run_experiment(n_estimators_list=[50, 100, 150], max_depth=None):
     mlflow.set_experiment("TP_MLflow_Iris")
 
     print(f"=== Expérience : TP_MLflow_Iris (Modèles à évaluer : {n_estimators_list}) ===")
+    if dvc_hash:
+        print(f"Version des données DVC détectée : {dvc_hash}")
 
     for n in n_estimators_list:
         run_name = f"RF_{n}" if max_depth is None else f"RF_{n}_depth_{max_depth}"
         with mlflow.start_run(run_name=run_name):
             print(f"\n--- Entraînement du modèle : {run_name} ---")
+
+            # 4. Traçabilité de la version des données dans MLflow (DVC tracking)
+            if dvc_hash:
+                mlflow.set_tag("dvc_data_version", dvc_hash)
+                mlflow.log_param("dvc_md5", dvc_hash)
+                try:
+                    mlflow_dataset = mlflow.data.from_pandas(
+                        df,
+                        targets="target",
+                        name="iris_dataset",
+                        digest=dvc_hash,
+                    )
+                    mlflow.log_input(mlflow_dataset, context="training")
+                except Exception as e:
+                    print(f"Notice: log_input ({e})")
 
             start_time = time.time()
             model = RandomForestClassifier(
@@ -65,7 +110,7 @@ def run_experiment(n_estimators_list=[50, 100, 150], max_depth=None):
             print("  Matrice de Confusion :")
             print(cm)
 
-            # Enregistrement des paramètres (Défis complémentaires inclus)
+            # Enregistrement des paramètres
             mlflow.log_param("n_estimators", n)
             mlflow.log_param("max_depth", str(max_depth))
             mlflow.log_param("test_size", 0.2)
@@ -87,16 +132,15 @@ def run_experiment(n_estimators_list=[50, 100, 150], max_depth=None):
             mlflow.log_figure(fig, "confusion_matrix.png")
             plt.close(fig)
 
-            # Enregistrement du modèle avec signature et skops_trusted_types
+            # Enregistrement du modèle avec skops_trusted_types
             mlflow.sklearn.log_model(
                 sk_model=model,
                 name="iris_model",
                 skops_trusted_types=["sklearn.tree._tree.Tree"],
             )
 
-            print(f"  [OK] Run '{run_name}' enregistré dans MLflow Tracking avec artefacts.")
+            print(f"  [OK] Run '{run_name}' enregistré dans MLflow avec version DVC : {dvc_hash[:8]}...")
 
 
 if __name__ == "__main__":
-    # Exécution des runs requis par le TP (50, 100) et du défi complémentaire (150)
     run_experiment(n_estimators_list=[50, 100, 150])
