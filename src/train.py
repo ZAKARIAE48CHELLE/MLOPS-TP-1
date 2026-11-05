@@ -3,6 +3,7 @@ import yaml
 import json
 import joblib
 import mlflow
+import mlflow.data
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
@@ -20,7 +21,8 @@ def train():
         params = yaml.safe_load(file)["train"]
 
     # 2. Charger les données préparées
-    df = pd.read_csv("data/raw/iris.csv")
+    data_path = "data/raw/iris.csv"
+    df = pd.read_csv(data_path)
     X = df.drop("target", axis=1)
     y = df["target"]
 
@@ -52,6 +54,21 @@ def train():
         )
 
     with mlflow.start_run(run_name=run_name):
+        # Enregistrement du dataset dans l'onglet Datasets de MLflow
+        try:
+            dataset_source = mlflow.data.from_pandas(
+                df,
+                targets="target",
+                name="iris.csv"
+            )
+            mlflow.log_input(dataset_source, context="training")
+        except Exception as e:
+            print(f"Notice log_input: {e}")
+
+        # Enregistrement du fichier CSV dans les artefacts téléchargeables
+        if os.path.exists(data_path):
+            mlflow.log_artifact(data_path, artifact_path="data")
+
         model.fit(X_train, y_train)
         predictions = model.predict(X_test)
 
@@ -78,7 +95,7 @@ def train():
 
         print(f"Modèle ({model_type}) entraîné et enregistré sous run '{run_name}'.")
         print("Métriques :", metrics)
+        print("Dataset CSV associé et enregistré dans MLflow.")
 
 if __name__ == "__main__":
     train()
-
