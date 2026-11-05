@@ -232,6 +232,26 @@ const createTable = (headers, rows, colWidths) => {
   });
 };
 
+const imageBlock = (imgBuffer, caption, width = 500, height = 321) => [
+  new Paragraph({
+    alignment: AlignmentType.CENTER,
+    keepNext: true,
+    spacing: { before: 140, after: 60 },
+    children: [
+      new ImageRun({
+        data: imgBuffer,
+        transformation: { width, height },
+      }),
+    ],
+  }),
+  new Paragraph({
+    alignment: AlignmentType.CENTER,
+    keepNext: true,
+    spacing: { after: 140 },
+    children: [run(caption, { italics: true, size: 18, color: GREY })],
+  }),
+];
+
 const footer = (module) =>
   new Footer({
     children: [
@@ -265,8 +285,12 @@ const footer = (module) =>
 
 async function generate() {
   const moduleName = 'Déploiement des applications intelligentes';
-  const imgPath = path.resolve('reports/confusion_matrix.png');
-  const imgBuffer = fs.readFileSync(imgPath);
+  
+  // Lecture des images de captures d'écran
+  const cmBuffer = fs.readFileSync(path.resolve('reports/confusion_matrix.png'));
+  const screenRunsBuffer = fs.readFileSync(path.resolve('reports/mlflow_runs_list.png'));
+  const screenDvcBuffer = fs.readFileSync(path.resolve('reports/mlflow_dvc_tracking.png'));
+  const screenArtBuffer = fs.readFileSync(path.resolve('reports/mlflow_artifacts.png'));
 
   const children = [
     ...titleBlock(
@@ -323,8 +347,8 @@ async function generate() {
     sectionHeader('1.1  Arborescence normalisée du projet'),
     code([
       'MLOPS-1/',
-      '├── .dvc/                  # Configuration DVC et remote de stockage',
-      '├── .github/workflows/    # Pipeline CI/CD automatisé (GitHub Actions)',
+      '├── .dvc/                  # Configuration DVC et remote de stockage (../dvc-storage)',
+      '├── .github/workflows/    # Pipeline CI/CD automatisé (GitHub Actions mlops.yml)',
       '├── data/raw/             # Données sources (iris.csv, iris.csv.dvc)',
       '├── models/               # Modèles entraînés suivis par DVC (model.pkl)',
       '├── reports/              # Métriques (metrics.json) et visualisations',
@@ -399,11 +423,11 @@ async function generate() {
       'dvc push',
     ]),
     tip(
-      'La commande dvc push transfère les données vers le remote storage, tandis que Git ne conserve que le pointeur data/raw/iris.csv.dvc contenant l’empreinte MD5 (21d441a28bce4417276097df955afc50).',
+      'La commande dvc push transfère les données vers le remote storage, tandis que Git ne conserve que le pointeur data/raw/iris.csv.dvc contenant l’empreinte MD5.',
       'Observation'
     ),
 
-    sectionHeader('2.3  TP 3 — Tracking des expérimentations avec MLflow'),
+    sectionHeader('2.3  TP 3 — Tracking des expérimentations avec MLflow et intégration DVC'),
     new Paragraph({
       spacing: { after: 80 },
       children: [
@@ -452,28 +476,37 @@ async function generate() {
       'Analyse comparative'
     ),
 
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      keepNext: true,
-      spacing: { before: 120, after: 60 },
-      children: [
-        new ImageRun({
-          data: imgBuffer,
-          transformation: { width: 360, height: 288 },
-        }),
-      ],
-    }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      keepNext: true,
-      spacing: { after: 120 },
-      children: [
-        run(
-          'Figure 1 — Matrice de confusion du modèle Random Forest enregistrée dans les artefacts MLflow',
-          { italics: true, size: 18, color: GREY }
-        ),
-      ],
-    }),
+    // CAPTURE 1 : MLFLOW RUNS
+    ...imageBlock(
+      screenRunsBuffer,
+      'Figure 1 — Interface Web MLflow : tableau de bord de l’expérience TP_Iris_Classification présentant les runs et leurs métriques d’évaluation',
+      500,
+      321
+    ),
+
+    // CAPTURE 2 : MLFLOW DVC TRACKING
+    ...imageBlock(
+      screenDvcBuffer,
+      'Figure 2 — Détail d’un run MLflow montrant la traçabilité de l’empreinte de données DVC (dvc_data_md5), le commit Git et les hyperparamètres',
+      500,
+      321
+    ),
+
+    // CAPTURE 3 : MLFLOW ARTIFACTS
+    ...imageBlock(
+      screenArtBuffer,
+      'Figure 3 — Section Artefacts de MLflow affichant le dataset brut (data/iris.csv), le modèle entraîné (model/model.pkl) et la matrice de confusion',
+      500,
+      321
+    ),
+
+    // CAPTURE 4 : MATRICE DE CONFUSION
+    ...imageBlock(
+      cmBuffer,
+      'Figure 4 — Matrice de confusion du modèle Random Forest générée et enregistrée dans les artefacts MLflow',
+      320,
+      256
+    ),
 
     sectionHeader('2.4  TP 4 — Pipeline MLOps intégré (DVC + MLflow)'),
     new Paragraph({
@@ -624,7 +657,7 @@ async function generate() {
   const buffer = await Packer.toBuffer(doc);
   const outputPath = path.resolve('Compte_Rendu_Atelier_Git_DVC_MLflow_MLOps.docx');
   fs.writeFileSync(outputPath, buffer);
-  console.log('Document DOCX généré avec succès :', outputPath);
+  console.log('Document DOCX généré avec succès avec les captures d’écran MLflow :', outputPath);
 }
 
 generate().catch(console.error);
