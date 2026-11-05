@@ -45,3 +45,10 @@ wheels/
 # Environment variables
 .env
 .env.local
+
+# Node.js
+node_modules/
+package-lock.json
+package.json
+scripts/check_pages.ps1
+scripts/convert_to_pdf.ps1
